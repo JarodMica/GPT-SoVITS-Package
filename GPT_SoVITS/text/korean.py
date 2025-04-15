@@ -5,7 +5,100 @@ from jamo import h2j, j2hcj
 import ko_pron
 from g2pk2 import G2p
 
-from GPT_SoVITS.text.symbols2 import symbols 
+import importlib
+import os
+
+# 防止win下无法读取模型
+if os.name == 'nt':
+    class win_G2p(G2p):
+        def check_mecab(self):
+            super().check_mecab()
+            spam_spec = importlib.util.find_spec("eunjeon")
+            non_found = spam_spec is None
+            if non_found:
+                print(f'you have to install eunjeon. install it...')
+            else:
+                installpath = spam_spec.submodule_search_locations[0]
+                if not (re.match(r'^[A-Za-z0-9_/\\:.\-]*$', installpath)):
+
+                    import sys
+                    from eunjeon import Mecab as _Mecab
+                    class Mecab(_Mecab):
+                        def get_dicpath(installpath):
+                            if not (re.match(r'^[A-Za-z0-9_/\\:.\-]*$', installpath)):
+                                import shutil
+                                python_dir = os.getcwd()
+                                if (installpath[:len(python_dir)].upper() == python_dir.upper()):
+                                    dicpath = os.path.join(os.path.relpath(installpath,python_dir),'data','mecabrc')
+                                else:
+                                    if not os.path.exists('TEMP'):
+                                        os.mkdir('TEMP')
+                                    if not os.path.exists(os.path.join('TEMP', 'ko')):
+                                        os.mkdir(os.path.join('TEMP', 'ko'))
+                                    if os.path.exists(os.path.join('TEMP', 'ko', 'ko_dict')):
+                                        shutil.rmtree(os.path.join('TEMP', 'ko', 'ko_dict'))
+
+                                    shutil.copytree(os.path.join(installpath, 'data'), os.path.join('TEMP', 'ko', 'ko_dict'))
+                                    dicpath = os.path.join('TEMP', 'ko', 'ko_dict', 'mecabrc')
+                            else:
+                                dicpath=os.path.abspath(os.path.join(installpath, 'data/mecabrc'))
+                            return dicpath
+
+                        def __init__(self, dicpath=get_dicpath(installpath)):
+                            super().__init__(dicpath=dicpath)
+
+                    sys.modules["eunjeon"].Mecab = Mecab
+
+    G2p = win_G2p
+
+
+import importlib
+import os
+
+# 防止win下无法读取模型
+if os.name == 'nt':
+    class win_G2p(G2p):
+        def check_mecab(self):
+            super().check_mecab()
+            spam_spec = importlib.util.find_spec("eunjeon")
+            non_found = spam_spec is None
+            if non_found:
+                print(f'you have to install eunjeon. install it...')
+            else:
+                installpath = spam_spec.submodule_search_locations[0]
+                if not (re.match(r'^[A-Za-z0-9_/\\:.\-]*$', installpath)):
+
+                    import sys
+                    from eunjeon import Mecab as _Mecab
+                    class Mecab(_Mecab):
+                        def get_dicpath(installpath):
+                            if not (re.match(r'^[A-Za-z0-9_/\\:.\-]*$', installpath)):
+                                import shutil
+                                python_dir = os.getcwd()
+                                if (installpath[:len(python_dir)].upper() == python_dir.upper()):
+                                    dicpath = os.path.join(os.path.relpath(installpath,python_dir),'data','mecabrc')
+                                else:
+                                    if not os.path.exists('TEMP'):
+                                        os.mkdir('TEMP')
+                                    if not os.path.exists(os.path.join('TEMP', 'ko')):
+                                        os.mkdir(os.path.join('TEMP', 'ko'))
+                                    if os.path.exists(os.path.join('TEMP', 'ko', 'ko_dict')):
+                                        shutil.rmtree(os.path.join('TEMP', 'ko', 'ko_dict'))
+
+                                    shutil.copytree(os.path.join(installpath, 'data'), os.path.join('TEMP', 'ko', 'ko_dict'))
+                                    dicpath = os.path.join('TEMP', 'ko', 'ko_dict', 'mecabrc')
+                            else:
+                                dicpath=os.path.abspath(os.path.join(installpath, 'data/mecabrc'))
+                            return dicpath
+
+                        def __init__(self, dicpath=get_dicpath(installpath)):
+                            super().__init__(dicpath=dicpath)
+
+                    sys.modules["eunjeon"].Mecab = Mecab
+
+    G2p = win_G2p
+
+from GPT_SoVITS.text.symbols2 import symbols
 
 # This is a list of Korean classifiers preceded by pure Korean numerals.
 _korean_classifiers = '군데 권 개 그루 닢 대 두 마리 모 모금 뭇 발 발짝 방 번 벌 보루 살 수 술 시 쌈 움큼 정 짝 채 척 첩 축 켤레 톨 통'
@@ -263,3 +356,8 @@ def g2p(text):
     # text = "".join([post_replace_ph(i) for i in text])
     text = [post_replace_ph(i) for i in text]
     return text
+
+
+if __name__ == "__main__":
+    text = "안녕하세요"
+    print(g2p(text))
