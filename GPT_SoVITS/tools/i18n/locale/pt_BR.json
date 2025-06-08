@@ -101,17 +101,6 @@
     "实际输入的目标文本(每句):": "Texto alvo realmente inserido (por frase):",
     "实际输入的目标文本:": "Texto alvo realmente inserido:",
     "导出文件格式": "Formato de arquivo de exportação",
-<<<<<<< HEAD:tools/i18n/locale/pt_BR.json
-    "已关闭": " Fechado",
-    "已完成": " Concluído",
-    "已开启": " Ativado",
-    "并行推理": "Inferência Paralela",
-    "并行推理模式已关闭": "Modo de Inferência Paralela Desativado",
-    "并行推理模式已开启": "Modo de Inferência Paralela Ativado",
-    "开启": "Ativar ",
-    "开启无参考文本模式。不填参考文本亦相当于开启。": "Ativar o modo sem texto de referência. Não preencher o texto de referência também equivale a ativar.",
-    "微调训练": "Treinamento de ajuste fino",
-=======
     "开启GPT训练": "Ativar treinamento GPT",
     "开启SSL提取": "Ativar extração SSL",
     "开启SoVITS训练": "Ativar treinamento SoVITS",
@@ -125,7 +114,6 @@
     "开启语义token提取": "Ativar extração de token semântico",
     "开启语音切割": "Ativar corte de voz",
     "开启语音降噪": "Ativar redução de ruído de voz",
->>>>>>> main:GPT_SoVITS/tools/i18n/locale/pt_BR.json
     "怎么切": "Como cortar",
     "总训练轮数total_epoch": "Total de epoch de treinamento",
     "总训练轮数total_epoch，不建议太高": "Total de epoch de treinamento, não é recomendável um valor muito alto",
