@@ -511,7 +511,7 @@ class TTS:
         print(f"model_version:{model_version}")
         # print(f'hps["model"]["version"]:{hps["model"]["version"]}')
         if model_version not in {"v3", "v4"}:
-            print("Using v2 model")
+            print(f"Using v{model_version} model")
             vits_model = SynthesizerTrn(
                 self.configs.filter_length // 2 + 1,
                 self.configs.segment_size // self.configs.hop_length,
@@ -520,7 +520,7 @@ class TTS:
             )
             self.configs.use_vocoder = False
         else:
-            print("Using v3 model")
+            print(f"Using v{model_version} model")
             kwargs["version"]=model_version
             vits_model = SynthesizerTrnV3(
                 self.configs.filter_length // 2 + 1,
@@ -551,9 +551,9 @@ class TTS:
             )
             vits_model.cfm = get_peft_model(vits_model.cfm, lora_config)
             print(
-                f"Loading LoRA weights from {weights_path}. {vits_model.load_state_dict(dict_s2['weight'], strict=False)}"
+                f"Loading LoRA weights from {weights_path}."
             )
-
+            vits_model.load_state_dict(dict_s2['weight'], strict=False)
             vits_model.cfm = vits_model.cfm.merge_and_unload()
 
         vits_model = vits_model.to(self.configs.device)
