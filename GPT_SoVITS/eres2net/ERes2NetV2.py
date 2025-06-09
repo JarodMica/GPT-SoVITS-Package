@@ -14,8 +14,8 @@ import torch
 import math
 import torch.nn as nn
 import torch.nn.functional as F
-import pooling_layers as pooling_layers
-from fusion import AFF
+import GPT_SoVITS.eres2net.pooling_layers as pooling_layers
+from GPT_SoVITS.eres2net.fusion import AFF
 
 class ReLU(nn.Hardtanh):
 

@@ -2,8 +2,8 @@ js = """
 function createGradioAnimation() {
     
     const params = new URLSearchParams(window.location.search);
-    if (params.get('__theme') !== 'light') { 
-        params.set('__theme', 'light'); // 仅当 __theme 不是 'light' 时设置为 'light'
+    if (params.get('__theme') !== 'dark') {
+        params.set('__theme', 'dark'); // 仅当 __theme 不是 'dark' 时设置为 'dark'
         window.location.search = params.toString(); // 更新 URL，触发页面刷新
     }
     
