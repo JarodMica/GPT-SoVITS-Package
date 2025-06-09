@@ -10,6 +10,7 @@ from faster_whisper import WhisperModel
 from tqdm import tqdm
 
 from GPT_SoVITS.tools.asr.config import check_fw_local_models
+from GPT_SoVITS.tools.my_utils import load_cudnn
 
 # fmt: off
 language_code_list = [
@@ -97,6 +98,8 @@ def execute_asr(input_folder, output_folder, model_size, language, precision):
         print(f"ASR 任务完成->标注文件路径: {output_file_path}\n")
     return output_file_path
 
+
+load_cudnn()
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()

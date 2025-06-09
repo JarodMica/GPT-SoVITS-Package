@@ -13,16 +13,16 @@ import torch
 
 logging.getLogger("numba").setLevel(logging.ERROR)
 logging.getLogger("matplotlib").setLevel(logging.ERROR)
-
+logging.getLogger("httpx").setLevel(logging.ERROR)
 MATPLOTLIB_FLAG = False
 
-logging.basicConfig(stream=sys.stdout, level=logging.ERROR)
+logging.basicConfig(stream=sys.stdout, level=logging.INFO)
 logger = logging
 
 
 def load_checkpoint(checkpoint_path, model, optimizer=None, skip_optimizer=False):
     assert os.path.isfile(checkpoint_path)
-    checkpoint_dict = torch.load(checkpoint_path, map_location="cpu")
+    checkpoint_dict = torch.load(checkpoint_path, map_location="cpu", weights_only=False)
     iteration = checkpoint_dict["iteration"]
     learning_rate = checkpoint_dict["learning_rate"]
     if optimizer is not None and not skip_optimizer and checkpoint_dict["optimizer"] is not None:
@@ -309,13 +309,13 @@ def check_git_hash(model_dir):
 def get_logger(model_dir, filename="train.log"):
     global logger
     logger = logging.getLogger(os.path.basename(model_dir))
-    logger.setLevel(logging.ERROR)
+    logger.setLevel(logging.INFO)
 
     formatter = logging.Formatter("%(asctime)s\t%(name)s\t%(levelname)s\t%(message)s")
     if not os.path.exists(model_dir):
         os.makedirs(model_dir)
     h = logging.FileHandler(os.path.join(model_dir, filename))
-    h.setLevel(logging.ERROR)
+    h.setLevel(logging.INFO)
     h.setFormatter(formatter)
     logger.addHandler(h)
     return logger

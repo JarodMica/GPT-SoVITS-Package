@@ -414,7 +414,8 @@ class Generator(torch.nn.Module):
         upsample_rates,
         upsample_initial_channel,
         upsample_kernel_sizes,
-        gin_channels=0,is_bias=False,
+        gin_channels=0,
+        is_bias=False,
     ):
         super(Generator, self).__init__()
         self.num_kernels = len(resblock_kernel_sizes)
@@ -585,11 +586,12 @@ class DiscriminatorS(torch.nn.Module):
 
         return x, fmap
 
-
+v2pro_set={"v2Pro","v2ProPlus"}
 class MultiPeriodDiscriminator(torch.nn.Module):
-    def __init__(self, use_spectral_norm=False):
+    def __init__(self, use_spectral_norm=False,version=None):
         super(MultiPeriodDiscriminator, self).__init__()
-        periods = [2, 3, 5, 7, 11]
+        if version in v2pro_set:periods = [2, 3, 5, 7, 11,17,23]
+        else:periods = [2, 3, 5, 7, 11]
 
         discs = [DiscriminatorS(use_spectral_norm=use_spectral_norm)]
         discs = discs + [DiscriminatorP(i, use_spectral_norm=use_spectral_norm) for i in periods]
@@ -785,7 +787,6 @@ class CodePredictor(nn.Module):
 
             return pred_codes.transpose(0, 1)
 
-
 class SynthesizerTrn(nn.Module):
     """
     Synthesizer for Training
@@ -885,12 +886,23 @@ class SynthesizerTrn(nn.Module):
         self.quantizer = ResidualVectorQuantizer(dimension=ssl_dim, n_q=1, bins=1024)
         self.freeze_quantizer = freeze_quantizer
 
-    def forward(self, ssl, y, y_lengths, text, text_lengths):
+        self.is_v2pro=self.version in v2pro_set
+        if self.is_v2pro:
+            self.sv_emb = nn.Linear(20480, gin_channels)
+            self.ge_to512 = nn.Linear(gin_channels, 512)
+            self.prelu = nn.PReLU(num_parameters=gin_channels)
+
+    def forward(self, ssl, y, y_lengths, text, text_lengths,sv_emb=None):
         y_mask = torch.unsqueeze(commons.sequence_mask(y_lengths, y.size(2)), 1).to(y.dtype)
         if self.version == "v1":
             ge = self.ref_enc(y * y_mask, y_mask)
         else:
             ge = self.ref_enc(y[:, :704] * y_mask, y_mask)
+        if self.is_v2pro:
+            sv_emb = self.sv_emb(sv_emb)  # B*20480->B*512
+            ge += sv_emb.unsqueeze(-1)
+            ge = self.prelu(ge)
+            ge512 = self.ge_to512(ge.transpose(2, 1)).transpose(2, 1)
         with autocast(enabled=False):
             maybe_no_grad = torch.no_grad() if self.freeze_quantizer else contextlib.nullcontext()
             with maybe_no_grad:
@@ -903,7 +915,7 @@ class SynthesizerTrn(nn.Module):
         if self.semantic_frame_rate == "25hz":
             quantized = F.interpolate(quantized, size=int(quantized.shape[-1] * 2), mode="nearest")
 
-        x, m_p, logs_p, y_mask = self.enc_p(quantized, y_lengths, text, text_lengths, ge)
+        x, m_p, logs_p, y_mask = self.enc_p(quantized, y_lengths, text, text_lengths, ge512 if self.is_v2pro else ge)
         z, m_q, logs_q, y_mask = self.enc_q(y, y_lengths, g=ge)
         z_p = self.flow(z, y_mask, g=ge)
 
@@ -940,8 +952,8 @@ class SynthesizerTrn(nn.Module):
         return o, y_mask, (z, z_p, m_p, logs_p)
 
     @torch.no_grad()
-    def decode(self, codes, text, refer, noise_scale=0.5, speed=1):
-        def get_ge(refer):
+    def decode(self, codes, text, refer,noise_scale=0.5, speed=1, sv_emb=None):
+        def get_ge(refer, sv_emb):
             ge = None
             if refer is not None:
                 refer_lengths = torch.LongTensor([refer.size(2)]).to(refer.device)
@@ -950,16 +962,20 @@ class SynthesizerTrn(nn.Module):
                     ge = self.ref_enc(refer * refer_mask, refer_mask)
                 else:
                     ge = self.ref_enc(refer[:, :704] * refer_mask, refer_mask)
+                if self.is_v2pro:
+                    sv_emb = self.sv_emb(sv_emb)  # B*20480->B*512
+                    ge += sv_emb.unsqueeze(-1)
+                    ge = self.prelu(ge)
             return ge
 
         if type(refer) == list:
             ges = []
-            for _refer in refer:
-                ge = get_ge(_refer)
+            for idx,_refer in enumerate(refer):
+                ge = get_ge(_refer, sv_emb[idx]if self.is_v2pro else None)
                 ges.append(ge)
             ge = torch.stack(ges, 0).mean(0)
         else:
-            ge = get_ge(refer)
+            ge = get_ge(refer, sv_emb)
 
         y_lengths = torch.LongTensor([codes.size(2) * 2]).to(codes.device)
         text_lengths = torch.LongTensor([text.size(-1)]).to(text.device)
@@ -967,7 +983,7 @@ class SynthesizerTrn(nn.Module):
         quantized = self.quantizer.decode(codes)
         if self.semantic_frame_rate == "25hz":
             quantized = F.interpolate(quantized, size=int(quantized.shape[-1] * 2), mode="nearest")
-        x, m_p, logs_p, y_mask = self.enc_p(quantized, y_lengths, text, text_lengths, ge, speed)
+        x, m_p, logs_p, y_mask = self.enc_p(quantized, y_lengths, text, text_lengths, self.ge_to512(ge.transpose(2,1)).transpose(2,1)if self.is_v2pro else ge, speed)
         z_p = m_p + torch.randn_like(m_p) * torch.exp(logs_p) * noise_scale
 
         z = self.flow(z_p, y_mask, g=ge, reverse=True)
@@ -980,7 +996,6 @@ class SynthesizerTrn(nn.Module):
         quantized, codes, commit_loss, quantized_list = self.quantizer(ssl)
         return codes.transpose(0, 1)
 
-
 class CFM(torch.nn.Module):
     def __init__(self, in_channels, dit):
         super().__init__()
@@ -991,6 +1006,8 @@ class CFM(torch.nn.Module):
         self.in_channels = in_channels
 
         self.criterion = torch.nn.MSELoss()
+
+        self.use_conditioner_cache = True
 
     @torch.inference_mode()
     def inference(self, mu, x_lens, prompt, n_timesteps, temperature=1.0, inference_cfg_rate=0):
@@ -1004,25 +1021,38 @@ class CFM(torch.nn.Module):
         mu = mu.transpose(2, 1)
         t = 0
         d = 1 / n_timesteps
+        text_cache = None
+        text_cfg_cache = None
+        dt_cache = None
+        d_tensor = torch.ones(x.shape[0], device=x.device, dtype=mu.dtype) * d
         for j in range(n_timesteps):
             t_tensor = torch.ones(x.shape[0], device=x.device, dtype=mu.dtype) * t
-            d_tensor = torch.ones(x.shape[0], device=x.device, dtype=mu.dtype) * d
             # v_pred = model(x, t_tensor, d_tensor, **extra_args)
-            v_pred = self.estimator(
-                x, prompt_x, x_lens, t_tensor, d_tensor, mu, use_grad_ckpt=False, drop_audio_cond=False, drop_text=False
-            ).transpose(2, 1)
+            v_pred, text_emb, dt = self.estimator(
+                x, prompt_x, x_lens, t_tensor, d_tensor, mu, use_grad_ckpt=False, drop_audio_cond=False, drop_text=False, infer=True, text_cache=text_cache, dt_cache=dt_cache
+            )
+            v_pred = v_pred.transpose(2, 1)
+            if self.use_conditioner_cache:
+                text_cache = text_emb
+                dt_cache = dt
             if inference_cfg_rate > 1e-5:
-                neg = self.estimator(
-                    x,
-                    prompt_x,
-                    x_lens,
-                    t_tensor,
-                    d_tensor,
-                    mu,
-                    use_grad_ckpt=False,
-                    drop_audio_cond=True,
-                    drop_text=True,
-                ).transpose(2, 1)
+                neg, text_cfg_emb, _ = self.estimator(
+                                    x,
+                                    prompt_x,
+                                    x_lens,
+                                    t_tensor,
+                                    d_tensor,
+                                    mu,
+                                    use_grad_ckpt=False,
+                                    drop_audio_cond=True,
+                                    drop_text=True,
+                                    infer=True, 
+                                    text_cache=text_cfg_cache, 
+                                    dt_cache=dt_cache
+                )
+                neg = neg.transpose(2, 1)
+                if self.use_conditioner_cache:
+                    text_cfg_cache = text_cfg_emb
                 v_pred = v_pred + (v_pred - neg) * inference_cfg_rate
             x = x + d * v_pred
             t = t + d
@@ -1173,7 +1203,7 @@ class SynthesizerTrnV3(nn.Module):
                 quantized = F.interpolate(quantized, scale_factor=2, mode="nearest")  ##BCT
                 x, m_p, logs_p, y_mask = self.enc_p(quantized, y_lengths, text, text_lengths, ge)
         fea = self.bridge(x)
-        fea = F.interpolate(fea, scale_factor=(1.875 if self.version=="v3"else 2), mode="nearest")  ##BCT
+        fea = F.interpolate(fea, scale_factor=(1.875 if self.version == "v3" else 2), mode="nearest")  ##BCT
         fea, y_mask_ = self.wns1(
             fea, mel_lengths, ge
         )  ##If the 1-minute fine-tuning works fine, no need to manually adjust the learning rate.
@@ -1196,9 +1226,9 @@ class SynthesizerTrnV3(nn.Module):
             ge = self.ref_enc(refer[:, :704] * refer_mask, refer_mask)
         y_lengths = torch.LongTensor([int(codes.size(2) * 2)]).to(codes.device)
         if speed == 1:
-            sizee = int(codes.size(2) * (3.875 if self.version=="v3"else 4))
+            sizee = int(codes.size(2) * (3.875 if self.version == "v3" else 4))
         else:
-            sizee = int(codes.size(2) * (3.875 if self.version=="v3"else 4) / speed) + 1
+            sizee = int(codes.size(2) * (3.875 if self.version == "v3" else 4) / speed) + 1
         y_lengths1 = torch.LongTensor([sizee]).to(codes.device)
         text_lengths = torch.LongTensor([text.size(-1)]).to(text.device)
 
@@ -1207,7 +1237,7 @@ class SynthesizerTrnV3(nn.Module):
             quantized = F.interpolate(quantized, scale_factor=2, mode="nearest")  ##BCT
         x, m_p, logs_p, y_mask = self.enc_p(quantized, y_lengths, text, text_lengths, ge, speed)
         fea = self.bridge(x)
-        fea = F.interpolate(fea, scale_factor=(1.875 if self.version=="v3"else 2), mode="nearest")  ##BCT
+        fea = F.interpolate(fea, scale_factor=(1.875 if self.version == "v3" else 2), mode="nearest")  ##BCT
         ####more wn paramter to learn mel
         fea, y_mask_ = self.wns1(fea, y_lengths1, ge)
         return fea, ge

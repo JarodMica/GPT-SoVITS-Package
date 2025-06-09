@@ -374,7 +374,7 @@ hz = 50
 
 
 def get_gpt_weights(gpt_path):
-    dict_s1 = torch.load(gpt_path, map_location="cpu")
+    dict_s1 = torch.load(gpt_path, map_location="cpu", weights_only=False)
     config = dict_s1["config"]
     max_sec = config["data"]["max_sec"]
     t2s_model = Text2SemanticLightningModule(config, "****", is_train=False)
@@ -534,7 +534,7 @@ class DictToAttrRecursive(dict):
 
 
 def get_spepc(hps, filename):
-    audio, _ = librosa.load(filename, int(hps.data.sampling_rate))
+    audio, _ = librosa.load(filename, sr=int(hps.data.sampling_rate))
     audio = torch.FloatTensor(audio)
     maxx = audio.abs().max()
     if maxx > 1:
